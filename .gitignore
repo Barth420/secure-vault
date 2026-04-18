@@ -1,0 +1,39 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Build outputs
+client/dist/
+client/build/
+
+# Storage (encrypted file blobs — never commit these)
+server/storage/*
+!server/storage/.gitkeep
+
+# Prisma
+server/prisma/migrations/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.suo
+# Data (Bind mounts)
+storage_data/
+postgres_data/
+
+# Binaries
+cloudflared.exe

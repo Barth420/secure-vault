@@ -1,0 +1,101 @@
+// ============================================================
+// Prisma Schema — Secure Cloud Storage
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  passwordHash String
+  salt         String        // PBKDF2 salt for client-side key derivation
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  files        File[]
+  shares       Share[]       @relation("ShareOwner")
+  activityLogs ActivityLog[]
+
+  @@map("users")
+}
+
+model File {
+  id              String        @id @default(cuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  filename        String        // Original filename (displayed to user)
+  storagePath     String        // Path to encrypted blob on disk
+  size            Int           // Size of encrypted blob in bytes
+  mimeType        String        @default("application/octet-stream")
+  hash            String        // SHA-256 of encrypted blob (for sync integrity)
+  iv              String        // Base64 IV used for file encryption
+  encryptedKey    String        // Base64 per-file AES key, encrypted with master key
+  keyIv           String        // Base64 IV used to encrypt the file key
+  version         Int           @default(1)
+  isDeleted       Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  shares          Share[]
+  activityLogs    ActivityLog[]
+  versions        FileVersion[]
+
+  @@map("files")
+}
+
+model FileVersion {
+  id          String   @id @default(cuid())
+  fileId      String
+  file        File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  storagePath String
+  size        Int
+  hash        String
+  iv          String
+  encryptedKey String
+  keyIv       String
+  version     Int
+  createdAt   DateTime @default(now())
+
+  @@map("file_versions")
+}
+
+model Share {
+  id          String    @id @default(cuid())
+  fileId      String
+  file        File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation("ShareOwner", fields: [userId], references: [id], onDelete: Cascade)
+  token       String    @unique
+  // For per-file key sharing: re-encrypt file key with share password
+  shareKey    String?   // Base64 file key encrypted with share-password-derived key
+  shareKeyIv  String?   // IV for shareKey encryption
+  shareSalt   String?   // Base64 PBKDF2 salt for share key derivation
+  passwordHash String?  // Argon2 hash of optional share password
+  expiresAt   DateTime?
+  maxAccess   Int?      // null = unlimited
+  accessCount Int       @default(0)
+  isRevoked   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  @@map("shares")
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fileId    String?
+  file      File?    @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  action    String   // REGISTER, LOGIN, LOGOUT, UPLOAD, DOWNLOAD, DELETE, SHARE_CREATE, SHARE_ACCESS, SHARE_REVOKE
+  details   Json?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@map("activity_logs")
+}

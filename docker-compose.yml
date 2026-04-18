@@ -1,0 +1,71 @@
+version: '3.9'
+
+services:
+
+  # ── PostgreSQL Database ────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: sc_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       securecloud
+      POSTGRES_USER:     securecloud
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U securecloud"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend API ────────────────────────────────────────
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: sc_server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV:           production
+      PORT:               4000
+      DATABASE_URL:       postgresql://securecloud:${POSTGRES_PASSWORD:-changeme}@postgres:5432/securecloud
+      JWT_ACCESS_SECRET:  ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
+      CLIENT_ORIGIN:      ${CLIENT_ORIGIN:-http://localhost}
+      STORAGE_PATH:       /app/storage
+      MAX_FILE_SIZE:      ${MAX_FILE_SIZE:-104857600}
+    volumes:
+      - ./storage_data:/app/storage
+    expose:
+      - "4000"
+
+  # ── Frontend (built static files served by nginx) ──────
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
+    container_name: sc_client
+    restart: unless-stopped
+    expose:
+      - "80"
+
+  # ── NGINX Reverse Proxy ────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: sc_nginx
+    restart: unless-stopped
+    depends_on:
+      - server
+      - client
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+
+# Volumes section removed to use bind mounts
